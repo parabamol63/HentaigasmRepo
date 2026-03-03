@@ -1,0 +1,11 @@
+{
+  "name": "Hentaigasm",
+  "description": "Direct MP4 hentai streaming from Hentaigasm.",
+  "version": 1,
+  "authors": ["Master"],
+  "language": "en",
+  "iconUrl": "https://hentaigasm.com/wp-content/uploads/2021/01/cropped-hentaigasm-logo.png",
+  "pluginClass": "com.example.HentaigasmProvider",
+  "url": "http://github.com/parabamol63/TestPlugins/blob/master/ExampleProvider.cs3",
+  "tvTypes": ["NSFW", "Anime"]
+}
