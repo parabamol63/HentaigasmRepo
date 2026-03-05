@@ -1,0 +1,8 @@
+{
+  "name": "Hentaigasm Repository",
+  "description": "Hentaigasm Cloudstream extension repository.",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/plugins.json"
+  ]
+}
