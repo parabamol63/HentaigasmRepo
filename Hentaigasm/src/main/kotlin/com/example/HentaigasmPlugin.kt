@@ -6,7 +6,7 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 
 @CloudstreamPlugin
-class ExamplePlugin: Plugin() {
+class HentaigasmPlugin : Plugin() {
     private var activity: AppCompatActivity? = null
 
     override fun load(context: Context) {
