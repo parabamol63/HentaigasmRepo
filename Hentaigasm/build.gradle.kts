@@ -3,7 +3,7 @@ plugins {
     kotlin("android")
 }
 
-version = 2
+version = 3
 
 android {
     namespace = "com.example"  // your package name

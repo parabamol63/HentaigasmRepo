@@ -4,6 +4,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.net.URI
 
 @Suppress("unused")
 class HentaigasmProvider : MainAPI() {
@@ -23,17 +24,21 @@ class HentaigasmProvider : MainAPI() {
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language" to "en-US,en;q=0.9"
     )
+    private val mirrorUrls = listOf(
+        "https://hentaigasm.com",
+        "https://www.hentaigasm.com"
+    )
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/?s=${query.trim().replace("\\s+".toRegex(), "+")}"
-        val doc = app.get(searchUrl, headers = browserHeaders, referer = mainUrl).document
+        val doc = getDocumentWithMirrors(searchUrl)
         return parseItems(doc)
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val baseUrl = request.data.ifBlank { "$mainUrl/" }.trimEnd('/')
         val pageUrl = if (page <= 1) "$baseUrl/" else "$baseUrl/page/$page/"
-        val doc = app.get(pageUrl, headers = browserHeaders, referer = mainUrl).document
+        val doc = getDocumentWithMirrors(pageUrl)
         val items = parseItems(doc)
 
         return newHomePageResponse(
@@ -43,7 +48,7 @@ class HentaigasmProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url, headers = browserHeaders, referer = mainUrl).document
+        val doc = getDocumentWithMirrors(url)
         val title = doc.selectFirst("h1, h1.entry-title")?.text()?.trim().orEmpty().ifBlank {
             doc.title().trim()
         }
@@ -82,7 +87,7 @@ class HentaigasmProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(data, headers = browserHeaders, referer = mainUrl).document
+        val doc = getDocumentWithMirrors(data)
         val links = extractVideoLinks(doc)
         if (links.isEmpty()) return false
 
@@ -97,12 +102,12 @@ class HentaigasmProvider : MainAPI() {
                         url = link
                     ) {
                         quality = Qualities.Unknown.value
-                        headers = browserHeaders + mapOf("Referer" to mainUrl)
+                        headers = browserHeaders + mapOf("Referer" to data)
                     }
                 )
                 found = true
             } else {
-                if (loadExtractor(link, mainUrl, subtitleCallback, callback)) {
+                if (loadExtractor(link, data, subtitleCallback, callback)) {
                     found = true
                 }
             }
@@ -221,6 +226,51 @@ class HentaigasmProvider : MainAPI() {
             .replace(" ", "%20")
         if (value.isBlank()) return null
         return value
+    }
+
+    private fun getMirrorCandidates(url: String): List<String> {
+        val normalized = sanitizeUrl(url) ?: return emptyList()
+        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+            return listOf(toAbsoluteUrl(normalized) ?: return emptyList())
+        }
+
+        val host = runCatching { URI(normalized).host?.lowercase() }.getOrNull().orEmpty()
+        if (host != "hentaigasm.com" && host != "www.hentaigasm.com") {
+            return listOf(normalized)
+        }
+
+        val suffix = runCatching {
+            val uri = URI(normalized)
+            buildString {
+                append(uri.rawPath ?: "/")
+                if (!uri.rawQuery.isNullOrBlank()) {
+                    append("?")
+                    append(uri.rawQuery)
+                }
+            }
+        }.getOrDefault("/")
+
+        return mirrorUrls.map { mirror ->
+            mirror.trimEnd('/') + if (suffix.startsWith("/")) suffix else "/$suffix"
+        }
+    }
+
+    private suspend fun getDocumentWithMirrors(url: String): Document {
+        val candidates = getMirrorCandidates(url)
+        var lastError: Throwable? = null
+
+        for (candidate in candidates) {
+            try {
+                val doc = app.get(candidate, headers = browserHeaders, referer = mainUrl).document
+                val matchedMirror = mirrorUrls.firstOrNull { candidate.startsWith(it) }
+                if (matchedMirror != null) mainUrl = matchedMirror
+                return doc
+            } catch (t: Throwable) {
+                lastError = t
+            }
+        }
+
+        throw lastError ?: IllegalStateException("Failed to fetch document")
     }
 
     private fun toAbsoluteUrl(url: String?): String? {
