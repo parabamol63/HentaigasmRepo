@@ -6,7 +6,6 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URI
 import java.net.URLDecoder
-import java.util.Base64
 
 @Suppress("unused")
 class HentaigasmProvider : MainAPI() {
@@ -166,8 +165,11 @@ class HentaigasmProvider : MainAPI() {
                 links += absoluteDataId
 
                 val parsed = parseNhPlayerDataId(absoluteDataId)
-                links += parsed.first
-                subtitles += parsed.second
+                subtitles += parsed.subtitles
+
+                // Try to resolve direct links from the nhplayer data-id page.
+                val resolved = resolveNhPlayerLinks(absoluteDataId, url)
+                links += resolved
             }
 
             NhPlayerPayload(
@@ -177,32 +179,12 @@ class HentaigasmProvider : MainAPI() {
         }.getOrDefault(NhPlayerPayload(emptyList(), emptyList()))
     }
 
-    private fun parseNhPlayerDataId(dataIdUrl: String): Pair<List<String>, List<String>> {
-        val links = linkedSetOf<String>()
+    private data class NhPlayerParseResult(
+        val subtitles: List<String>
+    )
+
+    private fun parseNhPlayerDataId(dataIdUrl: String): NhPlayerParseResult {
         val subtitles = linkedSetOf<String>()
-
-        val rawVid = getQueryParam(dataIdUrl, "vid")
-        val decodedVid = rawVid?.let { decodeBase64Text(it) }.orEmpty()
-        if (decodedVid.isNotBlank()) {
-            val parts = decodedVid.split('|')
-            val base = parts.firstOrNull()
-                ?.let { sanitizeUrl(it) }
-                ?.let { toAbsoluteUrl(it, "https://nhplayer.com") }
-
-            if (base != null) {
-                links += base
-                if (parts.size >= 3) {
-                    val expiry = parts[1]
-                    val token = parts[2]
-                    links += "$base?e=$expiry&token=$token"
-                    links += "$base?token=$token&e=$expiry"
-                    links += "$base?expires=$expiry&token=$token"
-                    links += "$base?token=$token&expires=$expiry"
-                    links += "$base?md5=$token&e=$expiry"
-                    links += "$base?e=$expiry&md5=$token"
-                }
-            }
-        }
 
         val rawSub = getQueryParam(dataIdUrl, "s")
         val sub = rawSub
@@ -211,7 +193,34 @@ class HentaigasmProvider : MainAPI() {
             ?.let { toAbsoluteUrl(it, "https://nhplayer.com") }
         if (sub != null) subtitles += sub
 
-        return Pair(links.toList(), subtitles.toList())
+        return NhPlayerParseResult(subtitles.toList())
+    }
+
+    private suspend fun resolveNhPlayerLinks(dataIdUrl: String, nhPlayerWatchUrl: String): List<String> {
+        return runCatching {
+            val response = app.get(
+                dataIdUrl,
+                headers = browserHeaders + mapOf(
+                    "Referer" to nhPlayerWatchUrl,
+                    "Origin" to "https://nhplayer.com"
+                ),
+                referer = nhPlayerWatchUrl
+            )
+
+            val html = response.text
+            extractDirectLinksFromHtml(html)
+        }.getOrDefault(emptyList())
+    }
+
+    private fun extractDirectLinksFromHtml(html: String): List<String> {
+        val links = linkedSetOf<String>()
+        Regex("""https?://[^\s"'<>\\]+""")
+            .findAll(html.replace("\\/", "/"))
+            .forEach { match ->
+                val url = sanitizeUrl(match.value) ?: return@forEach
+                if (isDirectVideo(url)) links += url
+            }
+        return links.toList()
     }
 
     private fun parseItems(doc: Document): List<SearchResponse> {
@@ -408,7 +417,7 @@ class HentaigasmProvider : MainAPI() {
             }
 
         return runCatching {
-            String(Base64.getDecoder().decode(normalized), Charsets.UTF_8)
+            String(java.util.Base64.getDecoder().decode(normalized), Charsets.UTF_8)
         }.getOrNull()
     }
 
