@@ -5,18 +5,25 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URI
+import java.net.URLDecoder
+import java.util.Base64
 
 @Suppress("unused")
 class HentaigasmProvider : MainAPI() {
 
-    override var mainUrl = "https://hentaigasm.com"
+    override var mainUrl = "https://hentaigasm.tv"
     override var name = "Hentaigasm"
     override var lang = "en"
 
     override val supportedTypes = setOf(TvType.NSFW, TvType.Anime)
     override val hasMainPage = true
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Latest"
+        "$mainUrl/" to "Latest",
+        "$mainUrl/old-videos/" to "Old Upload",
+        "$mainUrl/most-views/" to "Most Views",
+        "$mainUrl/most-likes/" to "Most Likes",
+        "$mainUrl/alphabetical-a-z/" to "A-Z",
+        "$mainUrl/series/" to "Series"
     )
 
     private val browserHeaders = mapOf(
@@ -25,9 +32,11 @@ class HentaigasmProvider : MainAPI() {
         "Accept-Language" to "en-US,en;q=0.9"
     )
     private val mirrorUrls = listOf(
+        "https://hentaigasm.tv",
         "https://hentaigasm.com",
         "https://www.hentaigasm.com"
     )
+    private val supportedHosts = mirrorUrls.mapNotNull { runCatching { URI(it).host?.lowercase() }.getOrNull() }.toSet()
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/?s=${query.trim().replace("\\s+".toRegex(), "+")}"
@@ -88,12 +97,24 @@ class HentaigasmProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = getDocumentWithMirrors(data)
-        val links = extractVideoLinks(doc)
+        val links = extractVideoLinks(doc).mapNotNull { sanitizeUrl(it) }
         if (links.isEmpty()) return false
 
+        val expandedLinks = linkedSetOf<String>()
+        for (link in links) {
+            expandedLinks += link
+
+            if (isNhPlayerWatch(link)) {
+                val payload = extractNhPlayerPayload(link, data)
+                expandedLinks += payload.links
+                payload.subtitles.forEach { subtitleUrl ->
+                    subtitleCallback.invoke(SubtitleFile("English", subtitleUrl))
+                }
+            }
+        }
+
         var found = false
-        for (rawLink in links) {
-            val link = sanitizeUrl(rawLink) ?: continue
+        for (link in expandedLinks) {
             if (isDirectVideo(link)) {
                 callback.invoke(
                     newExtractorLink(
@@ -113,6 +134,84 @@ class HentaigasmProvider : MainAPI() {
             }
         }
         return found
+    }
+
+    private data class NhPlayerPayload(
+        val links: List<String>,
+        val subtitles: List<String>
+    )
+
+    private suspend fun extractNhPlayerPayload(url: String, referer: String): NhPlayerPayload {
+        return runCatching {
+            val doc = app.get(
+                url,
+                headers = browserHeaders + mapOf("Referer" to referer),
+                referer = referer
+            ).document
+
+            val dataIds = linkedSetOf<String>()
+            doc.select("[data-id]").forEach { node ->
+                val value = node.attr("data-id").trim()
+                if (value.isNotBlank()) dataIds += value
+            }
+            Regex("""data-id="([^"]+)"""")
+                .findAll(doc.html())
+                .forEach { match -> dataIds += match.groupValues[1] }
+
+            val links = linkedSetOf<String>()
+            val subtitles = linkedSetOf<String>()
+
+            for (dataId in dataIds) {
+                val absoluteDataId = toAbsoluteUrl(dataId, "https://nhplayer.com") ?: continue
+                links += absoluteDataId
+
+                val parsed = parseNhPlayerDataId(absoluteDataId)
+                links += parsed.first
+                subtitles += parsed.second
+            }
+
+            NhPlayerPayload(
+                links = links.toList(),
+                subtitles = subtitles.toList()
+            )
+        }.getOrDefault(NhPlayerPayload(emptyList(), emptyList()))
+    }
+
+    private fun parseNhPlayerDataId(dataIdUrl: String): Pair<List<String>, List<String>> {
+        val links = linkedSetOf<String>()
+        val subtitles = linkedSetOf<String>()
+
+        val rawVid = getQueryParam(dataIdUrl, "vid")
+        val decodedVid = rawVid?.let { decodeBase64Text(it) }.orEmpty()
+        if (decodedVid.isNotBlank()) {
+            val parts = decodedVid.split('|')
+            val base = parts.firstOrNull()
+                ?.let { sanitizeUrl(it) }
+                ?.let { toAbsoluteUrl(it, "https://nhplayer.com") }
+
+            if (base != null) {
+                links += base
+                if (parts.size >= 3) {
+                    val expiry = parts[1]
+                    val token = parts[2]
+                    links += "$base?e=$expiry&token=$token"
+                    links += "$base?token=$token&e=$expiry"
+                    links += "$base?expires=$expiry&token=$token"
+                    links += "$base?token=$token&expires=$expiry"
+                    links += "$base?md5=$token&e=$expiry"
+                    links += "$base?e=$expiry&md5=$token"
+                }
+            }
+        }
+
+        val rawSub = getQueryParam(dataIdUrl, "s")
+        val sub = rawSub
+            ?.let { decodeBase64Text(it) }
+            ?.let { sanitizeUrl(it) }
+            ?.let { toAbsoluteUrl(it, "https://nhplayer.com") }
+        if (sub != null) subtitles += sub
+
+        return Pair(links.toList(), subtitles.toList())
     }
 
     private fun parseItems(doc: Document): List<SearchResponse> {
@@ -160,7 +259,7 @@ class HentaigasmProvider : MainAPI() {
 
         fun addLink(value: String?) {
             val normalized = toAbsoluteUrl(value) ?: return
-            if (normalized.contains(mainUrl) && isLikelyPostUrl(normalized)) return
+            if (isLikelyPostUrl(normalized)) return
             if (!isLikelyVideoOrExtractor(normalized)) return
             links += normalized
         }
@@ -195,19 +294,21 @@ class HentaigasmProvider : MainAPI() {
         val extractorHints = listOf(
             "streamwish", "filemoon", "dood", "voe", "mixdrop", "streamtape",
             "mp4upload", "ok.ru", "zlinkp", "embed", "/e/", "player",
-            "hgasm", "hentaigasm", "download"
+            "hgasm", "hentaigasm", "download", "nhplayer", "1hanime"
         )
         return extractorHints.any { lower.contains(it) }
     }
 
     private fun isLikelyPostUrl(url: String): Boolean {
-        if (!url.startsWith(mainUrl) && !url.startsWith("https://www.hentaigasm.com")) return false
-        val path = url
-            .removePrefix(mainUrl)
-            .removePrefix("https://www.hentaigasm.com")
+        val uri = runCatching { URI(url) }.getOrNull() ?: return false
+        val host = uri.host?.lowercase() ?: return false
+        if (host !in supportedHosts) return false
+
+        val path = (uri.path ?: "/")
             .substringBefore("#")
             .substringBefore("?")
         if (path.isBlank() || path == "/") return false
+        if (!path.startsWith("/watch/")) return false
 
         val blockedPrefixes = listOf(
             "/page/", "/category/", "/tag/", "/author/", "/feed", "/wp-", "/search", "/comments"
@@ -215,6 +316,11 @@ class HentaigasmProvider : MainAPI() {
         if (blockedPrefixes.any { path.startsWith(it) }) return false
         if (path.contains("/comment-page-")) return false
         return true
+    }
+
+    private fun isNhPlayerWatch(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("nhplayer.com/v/")
     }
 
     private fun sanitizeUrl(url: String?): String? {
@@ -235,7 +341,7 @@ class HentaigasmProvider : MainAPI() {
         }
 
         val host = runCatching { URI(normalized).host?.lowercase() }.getOrNull().orEmpty()
-        if (host != "hentaigasm.com" && host != "www.hentaigasm.com") {
+        if (host !in supportedHosts) {
             return listOf(normalized)
         }
 
@@ -273,13 +379,47 @@ class HentaigasmProvider : MainAPI() {
         throw lastError ?: IllegalStateException("Failed to fetch document")
     }
 
-    private fun toAbsoluteUrl(url: String?): String? {
+    private fun getQueryParam(url: String, key: String): String? {
+        val rawQuery = runCatching { URI(url).rawQuery }.getOrNull().orEmpty()
+        if (rawQuery.isBlank()) return null
+
+        return rawQuery
+            .split("&")
+            .asSequence()
+            .mapNotNull { part ->
+                val separator = part.indexOf('=')
+                if (separator < 0) return@mapNotNull null
+                val name = part.substring(0, separator)
+                val value = part.substring(separator + 1)
+                Pair(name, value)
+            }
+            .firstOrNull { (name, _) -> name == key }
+            ?.second
+            ?.let { encoded -> runCatching { URLDecoder.decode(encoded, "UTF-8") }.getOrNull() ?: encoded }
+    }
+
+    private fun decodeBase64Text(value: String): String? {
+        val normalized = value
+            .replace('-', '+')
+            .replace('_', '/')
+            .let { raw ->
+                val padding = (4 - raw.length % 4) % 4
+                raw + "=".repeat(padding)
+            }
+
+        return runCatching {
+            String(Base64.getDecoder().decode(normalized), Charsets.UTF_8)
+        }.getOrNull()
+    }
+
+    private fun toAbsoluteUrl(url: String?, baseUrl: String = mainUrl): String? {
         val value = sanitizeUrl(url) ?: return null
+        val base = baseUrl.trimEnd('/')
         return when {
             value.startsWith("http://") || value.startsWith("https://") -> value
             value.startsWith("//") -> "https:$value"
-            value.startsWith("/") -> mainUrl + value
-            else -> "$mainUrl/$value"
+            value.startsWith("/") -> base + value
+            else -> "$base/$value"
         }
     }
 }
