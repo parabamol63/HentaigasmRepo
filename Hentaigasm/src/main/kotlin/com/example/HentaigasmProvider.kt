@@ -165,6 +165,7 @@ class HentaigasmProvider : MainAPI() {
                 links += absoluteDataId
 
                 val parsed = parseNhPlayerDataId(absoluteDataId)
+                links += parsed.links
                 subtitles += parsed.subtitles
 
                 // Try to resolve direct links from the nhplayer data-id page.
@@ -180,11 +181,38 @@ class HentaigasmProvider : MainAPI() {
     }
 
     private data class NhPlayerParseResult(
+        val links: List<String>,
         val subtitles: List<String>
     )
 
     private fun parseNhPlayerDataId(dataIdUrl: String): NhPlayerParseResult {
+        val links = linkedSetOf<String>()
         val subtitles = linkedSetOf<String>()
+
+        val rawVid = getQueryParam(dataIdUrl, "vid")
+        val decodedVid = rawVid?.let { decodeBase64Text(it) }.orEmpty()
+        if (decodedVid.isNotBlank()) {
+            val parts = decodedVid.split('|')
+            val base = parts.firstOrNull()
+                ?.let { sanitizeUrl(it) }
+                ?.let { toAbsoluteUrl(it, "https://nhplayer.com") }
+
+            if (base != null) {
+                links += base
+                if (parts.size >= 3) {
+                    val expiry = parts[1]
+                    val token = parts[2]
+                    links += "$base?e=$expiry&token=$token"
+                    links += "$base?token=$token&e=$expiry"
+                    links += "$base?expires=$expiry&token=$token"
+                    links += "$base?token=$token&expires=$expiry"
+                    links += "$base?md5=$token&e=$expiry"
+                    links += "$base?e=$expiry&md5=$token"
+                }
+            }
+        }
+
+        links += dataIdUrl
 
         val rawSub = getQueryParam(dataIdUrl, "s")
         val sub = rawSub
@@ -193,7 +221,7 @@ class HentaigasmProvider : MainAPI() {
             ?.let { toAbsoluteUrl(it, "https://nhplayer.com") }
         if (sub != null) subtitles += sub
 
-        return NhPlayerParseResult(subtitles.toList())
+        return NhPlayerParseResult(links.toList(), subtitles.toList())
     }
 
     private suspend fun resolveNhPlayerLinks(dataIdUrl: String, nhPlayerWatchUrl: String): List<String> {
@@ -432,3 +460,7 @@ class HentaigasmProvider : MainAPI() {
         }
     }
 }
+
+
+
+
