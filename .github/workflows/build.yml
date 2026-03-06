@@ -49,7 +49,8 @@ jobs:
           chmod +x gradlew
           ./gradlew make makePluginsJson
           cp **/build/*.cs3 $GITHUB_WORKSPACE/builds
-          cp build/plugins.json $GITHUB_WORKSPACE/builds
+          cp build/plugins.json $GITHUB_WORKSPACE/builds/plugins.json
+          cp build/plugins.json $GITHUB_WORKSPACE/builds/plugins-v4.json
 
       - name: Push builds
         run: |
@@ -59,4 +60,5 @@ jobs:
           git add .
           git commit --amend -m "Build $GITHUB_SHA" || exit 0   # do not error if nothing to commit
           git push --force
+
 
