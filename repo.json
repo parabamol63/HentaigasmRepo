@@ -3,6 +3,7 @@
   "description": "Hentaigasm Cloudstream extension repository.",
   "manifestVersion": 1,
   "pluginLists": [
+    "https://cdn.jsdelivr.net/gh/parabamol63/HentaigasmRepo@builds/plugins-v4.json",
     "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/plugins-v4.json"
   ]
 }
