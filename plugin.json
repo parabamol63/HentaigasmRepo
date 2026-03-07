@@ -1,10 +1,10 @@
 {
-  "name": "Hentaigasm",
-  "description": "Direct MP4 hentai streaming from Hentaigasm.",
-  "version": 7,
+  "name": "HentaiPlay",
+  "description": "HentaiPlay streaming source.",
+  "version": 8,
   "authors": ["Master"],
   "language": "en",
-  "iconUrl": "https://hentaigasm.tv/wp-content/uploads/2024/12/cropped-HG.png",
+  "iconUrl": "https://hentaiplay.net/wp-content/uploads/hentaifavicon.png",
   "pluginClass": "com.example.HentaigasmPlugin",
   "url": "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/Hentaigasm.cs3",
   "tvTypes": ["NSFW", "Anime"]

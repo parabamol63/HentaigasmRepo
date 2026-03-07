@@ -2,12 +2,12 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/parabamol63/HentaigasmRepo",
-        "fileSize": 26860,
+        "fileSize": 16689,
         "status": 3,
         "authors": [
             
         ],
-        "version": 7,
+        "version": 8,
         "internalName": "Hentaigasm",
         "url": "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/Hentaigasm.cs3",
         "name": "Hentaigasm"
