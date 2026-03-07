@@ -1,12 +1,14 @@
 {
   "name": "HentaiPlay",
   "description": "HentaiPlay streaming source.",
-  "version": 8,
+  "version": 9,
   "authors": ["Master"],
   "language": "en",
   "iconUrl": "https://hentaiplay.net/wp-content/uploads/hentaifavicon.png",
   "pluginClass": "com.example.HentaigasmPlugin",
-  "url": "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/Hentaigasm.cs3",
+  "url": "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/HentaiPlay.cs3",
   "tvTypes": ["NSFW", "Anime"]
 }
+
+
 

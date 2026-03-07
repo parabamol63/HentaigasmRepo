@@ -3,7 +3,7 @@ plugins {
     kotlin("android")
 }
 
-version = 8
+version = 9
 
 android {
     namespace = "com.example"  // your package name
@@ -37,4 +37,5 @@ dependencies {
     implementation("androidx.core:core-ktx:1.10.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
 }
+
 

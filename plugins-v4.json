@@ -2,14 +2,14 @@
     {
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/parabamol63/HentaigasmRepo",
-        "fileSize": 16689,
+        "fileSize": 16693,
         "status": 3,
         "authors": [
             
         ],
-        "version": 8,
-        "internalName": "Hentaigasm",
-        "url": "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/Hentaigasm.cs3",
-        "name": "Hentaigasm"
+        "version": 9,
+        "internalName": "HentaiPlay",
+        "url": "https://raw.githubusercontent.com/parabamol63/HentaigasmRepo/builds/HentaiPlay.cs3",
+        "name": "HentaiPlay"
     }
 ]
